@@ -1,0 +1,8 @@
+streamlit
+pandas
+sqlalchemy
+pymysql
+gspread
+gspread-formatting
+gspread_dataframe
+google-auth
