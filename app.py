@@ -65,8 +65,8 @@ def get_db_connection():
 # ----------- EXPORT TO GOOGLE SHEETS -------
 def export_to_google_sheets(data, data_type):
     logger.info("📄 Starting export to Google Sheets...")
-    credentials = service_account.Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
+    credentials = service_account.Credentials.from_service_account_file(
+        "credentials.json",  # <-- Tên file JSON gốc
         scopes=SCOPES
     )
     service = build("sheets", "v4", credentials=credentials)
