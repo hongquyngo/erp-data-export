@@ -3,26 +3,35 @@ import pandas as pd
 from google.oauth2.service_account import Credentials
 import gspread
 from gspread_dataframe import set_with_dataframe
+from gspread_formatting import CellFormat, textFormat, format_cell_range, Color
 from sqlalchemy import create_engine
-import pymysql
+import urllib.parse
 import datetime
 
-# --------------------------- CONFIGURATION ---------------------------
+# ---------------- CONFIG ----------------
+
 DB_CONFIG = {
     "host": "erp-all-production.cx1uaj6vj8s5.ap-southeast-1.rds.amazonaws.com",
     "port": 3306,
     "user": "python_app",
-    "password": "PythonApp123#@!",
-    "database": "prostechvn"
+    "password": "PythonApp123@!",  # chứa ký tự đặc biệt
+    "database": "prostechvn",
 }
 
 SPREADSHEET_ID = "18uvsmtMSYQg1jacLjGF4Bj8GiX-Hjq0Cgi_PPM2Y0U4"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# --------------------------- FUNCTIONS ---------------------------
+# ---------------- FUNCTION ----------------
+
 def get_db_connection():
-    url = f"mysql+pymysql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
+    encoded_pw = urllib.parse.quote_plus(DB_CONFIG['password'])
+    url = f"mysql+pymysql://{DB_CONFIG['user']}:{encoded_pw}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
     return create_engine(url)
+
+def get_google_sheet_client():
+    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
+    client = gspread.authorize(creds)
+    return client
 
 def run_query(data_type):
     if data_type == "Order Confirmations":
@@ -46,46 +55,41 @@ def run_query(data_type):
     else:
         return ""
 
-def export_to_google_sheets(df, prefix):
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-    sheet_name = f"{prefix}_{timestamp}"
-
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
-    client = gspread.authorize(creds)
+def export_data_to_sheet(df, sheet_name_prefix):
+    client = get_google_sheet_client()
     spreadsheet = client.open_by_key(SPREADSHEET_ID)
 
-    # Check if existing sheet with same prefix
-    for worksheet in spreadsheet.worksheets():
-        if worksheet.title.startswith(prefix):
-            spreadsheet.del_worksheet(worksheet)
-            break
+    timestamp = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=7))).strftime("%Y%m%d_%H%M")
+    new_sheet_name = f"{sheet_name_prefix}{timestamp}"
 
-    worksheet = spreadsheet.add_worksheet(title=sheet_name, rows=str(len(df) + 1), cols=str(len(df.columns)))
+    worksheet = spreadsheet.add_worksheet(title=new_sheet_name, rows=str(len(df)+1), cols=str(len(df.columns)))
     set_with_dataframe(worksheet, df)
 
-    # Highlight In-stock Quantity column if exists
-    headers = df.columns.str.lower().tolist()
+    headers = df.columns.tolist()
+
+    # Highlight 'in-stock quantity' column
     if "in-stock quantity" in headers:
         idx = headers.index("in-stock quantity") + 1
-        format_range = f"{chr(64 + idx)}2:{chr(64 + idx)}{len(df) + 1}"
-        fmt = gspread.formatting.cellFormat(
-            textFormat=gspread.formatting.textFormat(bold=True),
-            foregroundColor=gspread.formatting.color(0, 0, 1)
-        )
-        gspread.formatting.format_cell_range(worksheet, format_range, fmt)
+        col_letter = chr(64 + idx) if idx <= 26 else f"A{chr(64 + idx - 26)}"
+        fmt = CellFormat(textFormat=textFormat(bold=True), foregroundColor=Color(0, 0, 1))
+        format_cell_range(worksheet, f"{col_letter}2:{col_letter}{df.shape[0] + 1}", fmt)
 
-    # Format VAT Invoice Number as string if exists
+    # Format 'vat invoice number' as text
     if "vat invoice number" in headers:
-        idx = headers.index("vat invoice number")
-        df.iloc[:, idx] = df.iloc[:, idx].apply(lambda x: f"'{x}" if pd.notnull(x) else x)
+        idx = headers.index("vat invoice number") + 1
+        vat_range = worksheet.range(2, idx, df.shape[0]+1, idx)
+        for cell in vat_range:
+            if cell.value and not cell.value.startswith("'"):
+                cell.value = f"'{cell.value}"
+        worksheet.update_cells(vat_range)
 
-    return sheet_name
+    st.success(f"✅ Data exported to sheet: {new_sheet_name}")
 
-# --------------------------- UI ---------------------------
-st.set_page_config(page_title="ERP Data Export", layout="centered")
-st.title("📤 Export ERP Data to Google Sheets")
+# ---------------- UI ----------------
 
-option = st.selectbox("Select data type to export:", [
+st.title("Export ERP Data to Google Sheets")
+
+data_options = [
     "Order Confirmations",
     "Inventory",
     "Purchase Orders",
@@ -95,19 +99,23 @@ option = st.selectbox("Select data type to export:", [
     "Product Code Mapping",
     "Inbound Logistic Charges",
     "Outbound Logistic Charges"
-])
+]
+
+data_type = st.selectbox("Select data type to export:", data_options)
 
 if st.button("Export to Google Sheets"):
-    with st.spinner("Connecting to database and running query..."):
+    try:
         engine = get_db_connection()
-        query = run_query(option)
-        if not query:
-            st.error("❌ Query not defined for this data type.")
+        query = run_query(data_type)
+        if query == "":
+            st.warning("⚠️ No query defined for this data type.")
         else:
-            df = pd.read_sql(query, engine)
-            if df.empty:
-                st.warning("⚠️ No data returned from query.")
-            else:
-                sheet_name = export_to_google_sheets(df, prefix=option.lower().replace(" ", "_"))
-                st.success(f"✅ Exported {len(df)} rows to sheet: {sheet_name}")
-
+            with st.spinner("Querying database..."):
+                df = pd.read_sql(query, engine)
+                if df.empty:
+                    st.warning("⚠️ No data returned.")
+                else:
+                    prefix = data_type.lower().replace(" ", "_") + "_"
+                    export_data_to_sheet(df, prefix)
+    except Exception as e:
+        st.error(f"❌ Error: {e}")
