@@ -26,15 +26,15 @@ logger = logging.getLogger(__name__)
 
 # --------------------------- FUNCTIONS ---------------------------
 def get_db_connection():
-    try:
-        logger.info("Encoding password for DB connection")
-        password_encoded = quote_plus(DB_CONFIG['password'])
-        url = f"mysql+pymysql://{DB_CONFIG['user']}:{password_encoded}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
-        logger.info("Creating DB engine")
-        return create_engine(url)
-    except Exception as e:
-        logger.error(f"Error during DB engine creation: {e}")
-        raise
+    logger.info("Building database connection URL...")
+    encoded_user = quote_plus(DB_CONFIG["user"])
+    encoded_password = quote_plus(DB_CONFIG["password"])
+    url = (
+        f"mysql+pymysql://{encoded_user}:{encoded_password}"
+        f"@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
+    )
+    logger.info(f"Connecting to DB using URL: {url}")
+    return create_engine(url)
 
 def run_query(data_type):
     if data_type == "Order Confirmations":
