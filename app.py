@@ -18,9 +18,10 @@ DB_CONFIG = {
     "host": "erp-all-production.cx1uaj6vj8s5.ap-southeast-1.rds.amazonaws.com",
     "port": 3306,
     "user": "streamlit_user",
-    "password": quote_plus("StrongPass456@#"),
+    "password": "StrongPass456@#",  # Không encode ở đây!
     "database": "prostechvn"
 }
+
 SPREADSHEET_ID = "18uvsmtMSYQg1jacLjGF4Bj8GiX-Hjq0Cgi_PPM2Y0U4"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
@@ -51,7 +52,7 @@ def run_query(data_type):
 def get_db_connection():
     logger.info("🔌 Connecting to database...")
     user = DB_CONFIG["user"]
-    password = quote_plus(DB_CONFIG["password"])
+    password = quote_plus(DB_CONFIG["password"])  # ✅ Chỉ encode ở đây
     host = DB_CONFIG["host"]
     port = DB_CONFIG["port"]
     database = DB_CONFIG["database"]
@@ -59,6 +60,7 @@ def get_db_connection():
     url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
     logger.info(f"🔐 Using SQLAlchemy URL: mysql+pymysql://{user}:***@{host}:{port}/{database}")
     return create_engine(url)
+
 
 # ----------- EXPORT TO GOOGLE SHEETS -------
 def export_to_google_sheets(data, data_type):
