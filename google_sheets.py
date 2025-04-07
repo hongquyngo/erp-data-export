@@ -71,16 +71,17 @@ def export_to_google_sheets(data, data_type):
                 spreadsheetId=SPREADSHEET_ID,
                 body={"requests": [{"addSheet": {"properties": {"title": new_sheet_title}}}]}
             ).execute()
-
+        
         # Ghi dữ liệu vào sheet
-        values = [list(data.columns)] + data.astype(str).values.tolist()
+        cleaned_df = data.fillna("").astype(str)
+        values = [list(cleaned_df.columns)] + cleaned_df.values.tolist()
         sheets_api.values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=f"{new_sheet_title}!A1",
             valueInputOption="RAW",
             body={"values": values}
         ).execute()
-
+        
         # Format lại sheet
         format_sheet(service, SPREADSHEET_ID, new_sheet_title, data)
 
