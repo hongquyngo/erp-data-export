@@ -7,35 +7,25 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import datetime
 import logging
+import os
 
-# --------------------------- CONFIGURATION ---------------------------
+# ----------------- LOGGING -----------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# ----------------- CONFIG ------------------
 DB_CONFIG = {
-    "host": "erp-all-production.cx1uaj6vj85s.ap-southeast-1.rds.amazonaws.com",
+    "host": "erp-all-production.cx1uaj6vj8s5.ap-southeast-1.rds.amazonaws.com",
     "port": 3306,
     "user": "python_app",
-    "password": "PythonApp123#@!",
+    "password": "PythonApp123!@",  # Sẽ được encode
     "database": "prostechvn"
 }
 
 SPREADSHEET_ID = "18uvsmtMSYQg1jacLjGF4Bj8GiX-Hjq0Cgi_PPM2Y0U4"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# --------------------------- LOGGING ---------------------------
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# --------------------------- FUNCTIONS ---------------------------
-def get_db_connection():
-    logger.info("Building database connection URL...")
-    encoded_user = quote_plus(DB_CONFIG["user"])
-    encoded_password = quote_plus(DB_CONFIG["password"])
-    url = (
-        f"mysql+pymysql://{encoded_user}:{encoded_password}"
-        f"@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
-    )
-    logger.info(f"Connecting to DB using URL: {url}")
-    return create_engine(url)
-
+# ------------- QUERY DISPATCHER ------------
 def run_query(data_type):
     if data_type == "Order Confirmations":
         return "SELECT * FROM order_confirmation_full_view"
@@ -58,45 +48,46 @@ def run_query(data_type):
     else:
         return ""
 
-def get_credentials():
+# ----------- CONNECT DATABASE --------------
+def get_db_connection():
+    logger.info("🔌 Connecting to database...")
+    user = DB_CONFIG["user"]
+    password = quote_plus(DB_CONFIG["password"])
+    host = DB_CONFIG["host"]
+    port = DB_CONFIG["port"]
+    database = DB_CONFIG["database"]
+
+    url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
+    logger.info(f"🔐 Using SQLAlchemy URL: mysql+pymysql://{user}:***@{host}:{port}/{database}")
+    return create_engine(url)
+
+# ----------- EXPORT TO GOOGLE SHEETS -------
+def export_to_google_sheets(data, data_type):
+    logger.info("📄 Starting export to Google Sheets...")
+    credentials = service_account.Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=SCOPES
+    )
+    service = build("sheets", "v4", credentials=credentials)
+
+    sheet = service.spreadsheets()
+    now = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    new_sheet_title = f"{data_type.lower().replace(' ', '_')}_{now}"
+
+    logger.info(f"📝 Creating new sheet: {new_sheet_title}")
     try:
-        logger.info("Loading Google credentials")
-        return service_account.Credentials.from_service_account_info(
-            st.secrets["gcp_service_account"], scopes=SCOPES
-        )
-    except Exception as e:
-        logger.error(f"Error loading Google credentials: {e}")
-        raise
+        # Create a new sheet
+        sheet.batchUpdate(
+            spreadsheetId=SPREADSHEET_ID,
+            body={
+                "requests": [
+                    {"addSheet": {"properties": {"title": new_sheet_title}}}
+                ]
+            }
+        ).execute()
 
-def export_to_gsheet(dataframe):
-    try:
-        creds = get_credentials()
-        service = build("sheets", "v4", credentials=creds)
-        sheet = service.spreadsheets()
-
-        logger.info("Clearing old sheets")
-        sheet_metadata = sheet.get(spreadsheetId=SPREADSHEET_ID).execute()
-        sheets = sheet_metadata.get("sheets", [])
-        for s in sheets:
-            sheet_id = s["properties"]["sheetId"]
-            sheet.batchUpdate(
-                spreadsheetId=SPREADSHEET_ID,
-                body={"requests": [{"deleteSheet": {"sheetId": sheet_id}}]}
-            ).execute()
-
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-        new_sheet_title = f"order_confirmation_{timestamp}"
-
-        logger.info(f"Creating new sheet: {new_sheet_title}")
-        add_sheet_request = {
-            "requests": [
-                {"addSheet": {"properties": {"title": new_sheet_title}}}
-            ]
-        }
-        sheet.batchUpdate(spreadsheetId=SPREADSHEET_ID, body=add_sheet_request).execute()
-
-        logger.info("Writing data to sheet")
-        values = [dataframe.columns.tolist()] + dataframe.values.tolist()
+        # Write data
+        values = [list(data.columns)] + data.astype(str).values.tolist()
         sheet.values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=f"{new_sheet_title}!A1",
@@ -104,38 +95,44 @@ def export_to_gsheet(dataframe):
             body={"values": values}
         ).execute()
 
+        logger.info("✅ Export completed successfully.")
         return new_sheet_title
+
     except Exception as e:
-        logger.error(f"Error during export to Google Sheet: {e}")
+        logger.exception(f"❌ Error during export to Google Sheet: {e}")
         raise
 
-# --------------------------- UI ---------------------------
-st.title("Export ERP Data to Google Sheets")
-data_type = st.selectbox("Select data type to export:", [
-    "Order Confirmations",
-    "Inventory",
-    "Purchase Orders",
-    "Sales Invoices",
-    "Customer Payments",
-    "Deliveries",
-    "Product Code Mapping",
-    "Inbound Logistic Charges",
-    "Outbound Logistic Charges"
-])
+# ------------------- UI ---------------------
+def main():
+    st.title("📤 Export ERP Data to Google Sheets")
+    data_type = st.selectbox("Select data type to export:", [
+        "Order Confirmations",
+        "Inventory",
+        "Purchase Orders",
+        "Sales Invoices",
+        "Customer Payments",
+        "Deliveries",
+        "Product Code Mapping",
+        "Inbound Logistic Charges",
+        "Outbound Logistic Charges"
+    ])
 
-if st.button("Export to Google Sheets"):
-    try:
-        logger.info("Running query")
-        engine = get_db_connection()
+    if st.button("Export to Google Sheets"):
         query = run_query(data_type)
         if not query:
-            st.error("Invalid data type selected")
-            raise ValueError("No query for selected type")
+            st.error("❌ Invalid data type selected.")
+            return
 
-        df = pd.read_sql(query, engine)
-        logger.info("Query successful")
-        new_sheet = export_to_gsheet(df)
-        st.success(f"Exported successfully to sheet: {new_sheet}")
-    except Exception as e:
-        logger.exception("Unhandled exception occurred")
-        st.error(f"❌ Export failed: {e}")
+        try:
+            logger.info(f"📥 Running query for: {data_type}")
+            engine = get_db_connection()
+            df = pd.read_sql(query, engine)
+            logger.info(f"📊 Retrieved {len(df)} rows.")
+            new_sheet = export_to_google_sheets(df, data_type)
+            st.success(f"✅ Exported to sheet: {new_sheet}")
+        except Exception as e:
+            logger.exception(f"❌ Error in main flow: {e}")
+            st.error("❌ Export failed. Check logs for details.")
+
+if __name__ == "__main__":
+    main()
