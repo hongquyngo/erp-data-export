@@ -13,8 +13,9 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 def export_to_google_sheets(data, data_type):
     logger.info("📄 Starting export to Google Sheets...")
+
     credentials = service_account.Credentials.from_service_account_file(
-        "credentials.json",  # or use st.secrets if in cloud mode
+        "credentials.json",
         scopes=SCOPES
     )
     service = build("sheets", "v4", credentials=credentials)
@@ -24,16 +25,55 @@ def export_to_google_sheets(data, data_type):
     # Set timezone (ví dụ: Asia/Ho_Chi_Minh cho Việt Nam)
     vn_tz = pytz.timezone("Asia/Ho_Chi_Minh")
     now = datetime.datetime.now(vn_tz).strftime("%Y%m%d_%H%M")
-    new_sheet_title = f"{data_type.lower().replace(' ', '_')}_{now}"
+    prefix = data_type.lower().replace(" ", "_")
+    new_sheet_title = f"{prefix}_{now}"
 
     try:
-        # Create new sheet
-        sheet.batchUpdate(
-            spreadsheetId=SPREADSHEET_ID,
-            body={"requests": [{"addSheet": {"properties": {"title": new_sheet_title}}}]}
-        ).execute()
+        # 1️⃣ Tìm sheet có prefix trùng
+        logger.info(f"🔍 Checking for existing sheet with prefix: {prefix}")
+        metadata = sheet.get(spreadsheetId=SPREADSHEET_ID).execute()
+        sheets = metadata.get("sheets", [])
+        target_sheet_id = None
+        old_sheet_title = None
 
-        # Write data
+        for s in sheets:
+            title = s["properties"]["title"]
+            if title.startswith(prefix):
+                target_sheet_id = s["properties"]["sheetId"]
+                old_sheet_title = title
+                break
+
+        if target_sheet_id:
+            logger.info(f"♻️ Found existing sheet: {old_sheet_title}. Will clear and rename.")
+            # Xóa toàn bộ dữ liệu cũ và đổi tên
+            requests = [
+                {
+                    "updateSheetProperties": {
+                        "properties": {
+                            "sheetId": target_sheet_id,
+                            "title": new_sheet_title
+                        },
+                        "fields": "title"
+                    }
+                },
+                {
+                    "updateCells": {
+                        "range": {
+                            "sheetId": target_sheet_id
+                        },
+                        "fields": "userEnteredValue"
+                    }
+                }
+            ]
+            sheet.batchUpdate(spreadsheetId=SPREADSHEET_ID, body={"requests": requests}).execute()
+        else:
+            logger.info(f"🆕 No existing sheet found. Creating new sheet: {new_sheet_title}")
+            sheet.batchUpdate(
+                spreadsheetId=SPREADSHEET_ID,
+                body={"requests": [{"addSheet": {"properties": {"title": new_sheet_title}}}]}
+            ).execute()
+
+        # 2️⃣ Ghi dữ liệu
         values = [list(data.columns)] + data.astype(str).values.tolist()
         sheet.values().update(
             spreadsheetId=SPREADSHEET_ID,
@@ -42,8 +82,8 @@ def export_to_google_sheets(data, data_type):
             body={"values": values}
         ).execute()
 
-        # ✅ Apply formatting after writing data
-        format_sheet(service, SPREADSHEET_ID, new_sheet_title, data)
+        # 3️⃣ Format
+        format_sheet(sheet, SPREADSHEET_ID, new_sheet_title, data)
 
         logger.info("✅ Export and formatting completed successfully.")
         return new_sheet_title
@@ -56,19 +96,52 @@ def export_to_google_sheets(data, data_type):
 def format_sheet(sheet_service, sheet_id, sheet_name, df):
     from googleapiclient.errors import HttpError
 
-    # Xác định vị trí index của các cột cần định dạng
+    # Lấy sheetId theo tên sheet
+    sheet_id_num = get_sheet_id_by_name(sheet_service, sheet_id, sheet_name)
     col_index = {col: idx for idx, col in enumerate(df.columns)}
 
     requests = []
 
-    # Định dạng: In-stock Quantity -> in đậm + màu xanh
+    # 1️⃣ Freeze hàng tiêu đề đầu tiên
+    requests.append({
+        "updateSheetProperties": {
+            "properties": {
+                "sheetId": sheet_id_num,
+                "gridProperties": {
+                    "frozenRowCount": 1
+                }
+            },
+            "fields": "gridProperties.frozenRowCount"
+        }
+    })
+
+    # 2️⃣ Bôi đậm hàng tiêu đề (header)
+    requests.append({
+        "repeatCell": {
+            "range": {
+                "sheetId": sheet_id_num,
+                "startRowIndex": 0,
+                "endRowIndex": 1
+            },
+            "cell": {
+                "userEnteredFormat": {
+                    "textFormat": {
+                        "bold": True
+                    }
+                }
+            },
+            "fields": "userEnteredFormat.textFormat.bold"
+        }
+    })
+
+    # 3️⃣ In-stock Quantity -> in đậm, màu xanh
     if 'in_stock_quantity' in col_index:
         col_idx = col_index['in_stock_quantity']
         requests.append({
             "repeatCell": {
                 "range": {
-                    "sheetId": get_sheet_id_by_name(sheet_service, sheet_id, sheet_name),
-                    "startRowIndex": 1,  # Bỏ qua header
+                    "sheetId": sheet_id_num,
+                    "startRowIndex": 1,
                     "startColumnIndex": col_idx,
                     "endColumnIndex": col_idx + 1
                 },
@@ -88,13 +161,13 @@ def format_sheet(sheet_service, sheet_id, sheet_name, df):
             }
         })
 
-    # Định dạng: VAT Invoice Number -> giữ định dạng văn bản
+    # 4️⃣ VAT Invoice Number -> giữ định dạng text
     if 'vat_invoice_number' in col_index:
         col_idx = col_index['vat_invoice_number']
         requests.append({
             "repeatCell": {
                 "range": {
-                    "sheetId": get_sheet_id_by_name(sheet_service, sheet_id, sheet_name),
+                    "sheetId": sheet_id_num,
                     "startRowIndex": 1,
                     "startColumnIndex": col_idx,
                     "endColumnIndex": col_idx + 1
@@ -110,14 +183,17 @@ def format_sheet(sheet_service, sheet_id, sheet_name, df):
             }
         })
 
+    # 5️⃣ Thực hiện các yêu cầu định dạng
     if requests:
         try:
             sheet_service.spreadsheets().batchUpdate(
                 spreadsheetId=sheet_id,
                 body={"requests": requests}
             ).execute()
+            logger.info("🎨 Sheet formatting applied successfully.")
         except HttpError as e:
             logger.error(f"❌ Google Sheets formatting error: {e}")
+
 
 
 
