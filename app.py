@@ -1,37 +1,40 @@
 import streamlit as st
 import pandas as pd
-from google.oauth2.service_account import Credentials
-import gspread
-from gspread_dataframe import set_with_dataframe
-from gspread_formatting import CellFormat, textFormat, format_cell_range, Color
+import pymysql
 from sqlalchemy import create_engine
-import urllib.parse
+from urllib.parse import quote_plus
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 import datetime
+import logging
 
-# ---------------- CONFIG ----------------
-
+# --------------------------- CONFIGURATION ---------------------------
 DB_CONFIG = {
-    "host": "erp-all-production.cx1uaj6vj8s5.ap-southeast-1.rds.amazonaws.com",
+    "host": "erp-all-production.cx1uaj6vj85s.ap-southeast-1.rds.amazonaws.com",
     "port": 3306,
     "user": "python_app",
-    "password": "PythonApp123@!",  # chứa ký tự đặc biệt
-    "database": "prostechvn",
+    "password": "PythonApp123#@!",
+    "database": "prostechvn"
 }
 
 SPREADSHEET_ID = "18uvsmtMSYQg1jacLjGF4Bj8GiX-Hjq0Cgi_PPM2Y0U4"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# ---------------- FUNCTION ----------------
+# --------------------------- LOGGING ---------------------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
+# --------------------------- FUNCTIONS ---------------------------
 def get_db_connection():
-    encoded_pw = urllib.parse.quote_plus(DB_CONFIG['password'])
-    url = f"mysql+pymysql://{DB_CONFIG['user']}:{encoded_pw}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
-    return create_engine(url)
-
-def get_google_sheet_client():
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
-    client = gspread.authorize(creds)
-    return client
+    try:
+        logger.info("Encoding password for DB connection")
+        password_encoded = quote_plus(DB_CONFIG['password'])
+        url = f"mysql+pymysql://{DB_CONFIG['user']}:{password_encoded}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
+        logger.info("Creating DB engine")
+        return create_engine(url)
+    except Exception as e:
+        logger.error(f"Error during DB engine creation: {e}")
+        raise
 
 def run_query(data_type):
     if data_type == "Order Confirmations":
@@ -55,41 +58,60 @@ def run_query(data_type):
     else:
         return ""
 
-def export_data_to_sheet(df, sheet_name_prefix):
-    client = get_google_sheet_client()
-    spreadsheet = client.open_by_key(SPREADSHEET_ID)
+def get_credentials():
+    try:
+        logger.info("Loading Google credentials")
+        return service_account.Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"], scopes=SCOPES
+        )
+    except Exception as e:
+        logger.error(f"Error loading Google credentials: {e}")
+        raise
 
-    timestamp = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=7))).strftime("%Y%m%d_%H%M")
-    new_sheet_name = f"{sheet_name_prefix}{timestamp}"
+def export_to_gsheet(dataframe):
+    try:
+        creds = get_credentials()
+        service = build("sheets", "v4", credentials=creds)
+        sheet = service.spreadsheets()
 
-    worksheet = spreadsheet.add_worksheet(title=new_sheet_name, rows=str(len(df)+1), cols=str(len(df.columns)))
-    set_with_dataframe(worksheet, df)
+        logger.info("Clearing old sheets")
+        sheet_metadata = sheet.get(spreadsheetId=SPREADSHEET_ID).execute()
+        sheets = sheet_metadata.get("sheets", [])
+        for s in sheets:
+            sheet_id = s["properties"]["sheetId"]
+            sheet.batchUpdate(
+                spreadsheetId=SPREADSHEET_ID,
+                body={"requests": [{"deleteSheet": {"sheetId": sheet_id}}]}
+            ).execute()
 
-    headers = df.columns.tolist()
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+        new_sheet_title = f"order_confirmation_{timestamp}"
 
-    # Highlight 'in-stock quantity' column
-    if "in-stock quantity" in headers:
-        idx = headers.index("in-stock quantity") + 1
-        col_letter = chr(64 + idx) if idx <= 26 else f"A{chr(64 + idx - 26)}"
-        fmt = CellFormat(textFormat=textFormat(bold=True), foregroundColor=Color(0, 0, 1))
-        format_cell_range(worksheet, f"{col_letter}2:{col_letter}{df.shape[0] + 1}", fmt)
+        logger.info(f"Creating new sheet: {new_sheet_title}")
+        add_sheet_request = {
+            "requests": [
+                {"addSheet": {"properties": {"title": new_sheet_title}}}
+            ]
+        }
+        sheet.batchUpdate(spreadsheetId=SPREADSHEET_ID, body=add_sheet_request).execute()
 
-    # Format 'vat invoice number' as text
-    if "vat invoice number" in headers:
-        idx = headers.index("vat invoice number") + 1
-        vat_range = worksheet.range(2, idx, df.shape[0]+1, idx)
-        for cell in vat_range:
-            if cell.value and not cell.value.startswith("'"):
-                cell.value = f"'{cell.value}"
-        worksheet.update_cells(vat_range)
+        logger.info("Writing data to sheet")
+        values = [dataframe.columns.tolist()] + dataframe.values.tolist()
+        sheet.values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f"{new_sheet_title}!A1",
+            valueInputOption="RAW",
+            body={"values": values}
+        ).execute()
 
-    st.success(f"✅ Data exported to sheet: {new_sheet_name}")
+        return new_sheet_title
+    except Exception as e:
+        logger.error(f"Error during export to Google Sheet: {e}")
+        raise
 
-# ---------------- UI ----------------
-
+# --------------------------- UI ---------------------------
 st.title("Export ERP Data to Google Sheets")
-
-data_options = [
+data_type = st.selectbox("Select data type to export:", [
     "Order Confirmations",
     "Inventory",
     "Purchase Orders",
@@ -99,23 +121,21 @@ data_options = [
     "Product Code Mapping",
     "Inbound Logistic Charges",
     "Outbound Logistic Charges"
-]
-
-data_type = st.selectbox("Select data type to export:", data_options)
+])
 
 if st.button("Export to Google Sheets"):
     try:
+        logger.info("Running query")
         engine = get_db_connection()
         query = run_query(data_type)
-        if query == "":
-            st.warning("⚠️ No query defined for this data type.")
-        else:
-            with st.spinner("Querying database..."):
-                df = pd.read_sql(query, engine)
-                if df.empty:
-                    st.warning("⚠️ No data returned.")
-                else:
-                    prefix = data_type.lower().replace(" ", "_") + "_"
-                    export_data_to_sheet(df, prefix)
+        if not query:
+            st.error("Invalid data type selected")
+            raise ValueError("No query for selected type")
+
+        df = pd.read_sql(query, engine)
+        logger.info("Query successful")
+        new_sheet = export_to_gsheet(df)
+        st.success(f"Exported successfully to sheet: {new_sheet}")
     except Exception as e:
-        st.error(f"❌ Error: {e}")
+        logger.exception("Unhandled exception occurred")
+        st.error(f"❌ Export failed: {e}")
