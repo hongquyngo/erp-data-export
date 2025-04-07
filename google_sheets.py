@@ -73,9 +73,10 @@ def export_to_google_sheets(data, data_type):
             ).execute()
         
         # Ghi dữ liệu vào sheet
-        cleaned_df = data.fillna("").astype(str)
-        values = [list(cleaned_df.columns)] + cleaned_df.values.tolist()
-        sheets_api.values().update(
+        cleaned_df = clean_dataframe_for_export(data)
+        values = [list(cleaned_df.columns)] + cleaned_df.astype(str).values.tolist()
+        
+        sheet.values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=f"{new_sheet_title}!A1",
             valueInputOption="RAW",
@@ -194,3 +195,8 @@ def get_sheet_id_by_name(service, spreadsheet_id, sheet_name):
         if sheet["properties"]["title"] == sheet_name:
             return sheet["properties"]["sheetId"]
     raise Exception(f"Sheet name '{sheet_name}' not found.")
+
+def clean_dataframe_for_export(df):
+    # Chuyển toàn bộ NaN, NaT, None về None để Google Sheets hiểu là ô trống
+    return df.astype(object).where(pd.notnull(df), None)
+
