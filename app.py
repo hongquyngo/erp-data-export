@@ -17,11 +17,10 @@ logger = logging.getLogger(__name__)
 DB_CONFIG = {
     "host": "erp-all-production.cx1uaj6vj8s5.ap-southeast-1.rds.amazonaws.com",
     "port": 3306,
-    "user": "python_app",
-    "password": "PythonApp123!@",  # Sẽ được encode
+    "user": "streamlit_user",
+    "password": quote_plus("StrongPass456@#"),
     "database": "prostechvn"
 }
-
 SPREADSHEET_ID = "18uvsmtMSYQg1jacLjGF4Bj8GiX-Hjq0Cgi_PPM2Y0U4"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
