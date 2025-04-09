@@ -136,7 +136,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
     })
 
     # In-stock Quantity: bold + màu xanh
-    if 'in_stock_quantity' in col_index:
+    if 'In-stock Quantity' in col_index:
         col_idx = col_index['in_stock_quantity']
         requests.append({
             "repeatCell": {
@@ -157,7 +157,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
         })
 
     # VAT Invoice Number: format text
-    if 'vat_invoice_number' in col_index:
+    if 'VAT Invoice Number' in col_index:
         col_idx = col_index['vat_invoice_number']
         requests.append({
             "repeatCell": {
