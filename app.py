@@ -19,7 +19,6 @@ def main():
         "Sales Invoices",
         "Customer Payments",
         "Deliveries",
-        "Product Code Mapping",
         "Inbound Logistic Charges",
         "Outbound Logistic Charges"
     ])
