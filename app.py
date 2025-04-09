@@ -16,12 +16,13 @@ def main():
         "Inventory Summary",
         "Inventory Details",
         "Order Confirmations",
-        "Purchase Orders",
+        "Deliveries",
+        "Outbound Logistic Charges"
         "Sales Invoices",
         "Customer Payments",
-        "Deliveries",
+        "Purchase Orders",
+        "CAN Details",
         "Inbound Logistic Charges",
-        "Outbound Logistic Charges"
     ])
 
     if st.button("Export to Google Sheets"):
