@@ -1,19 +1,22 @@
 import datetime
 import logging
+import pandas as pd
 import streamlit as st
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import pytz
-import pandas as pd
 
-
-# Cấu hình logger
-logger = logging.getLogger(__name__)
-
+# ------------------ CONFIG ------------------
 SPREADSHEET_ID = "18uvsmtMSYQg1jacLjGF4Bj8GiX-Hjq0Cgi_PPM2Y0U4"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
+# ------------------ LOGGER ------------------
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+
+# ------------------ EXPORT ------------------
 def export_to_google_sheets(data, data_type):
     logger.info("📄 Starting export to Google Sheets...")
 
@@ -22,16 +25,18 @@ def export_to_google_sheets(data, data_type):
         scopes=SCOPES
     )
     service = build("sheets", "v4", credentials=credentials)
+    sheets_api = service.spreadsheets()
 
-    # Tạo prefix tên sheet theo giờ Việt Nam
+    # Tạo tên sheet mới theo giờ Việt Nam
     vn_tz = pytz.timezone("Asia/Ho_Chi_Minh")
     now = datetime.datetime.now(vn_tz).strftime("%Y%m%d_%H%M")
     prefix = data_type.lower().replace(" ", "_")
     new_sheet_title = f"{prefix}_{now}"
 
     try:
+        # Kiểm tra sheet có prefix
         logger.info(f"🔍 Checking for existing sheet with prefix: {prefix}")
-        metadata = service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID).execute()
+        metadata = sheets_api.get(spreadsheetId=SPREADSHEET_ID).execute()
         sheets = metadata.get("sheets", [])
         target_sheet_id = None
         old_sheet_title = None
@@ -42,8 +47,6 @@ def export_to_google_sheets(data, data_type):
                 target_sheet_id = s["properties"]["sheetId"]
                 old_sheet_title = title
                 break
-
-        sheets_api = service.spreadsheets()
 
         if target_sheet_id:
             logger.info(f"♻️ Found existing sheet: {old_sheet_title}. Will clear and rename.")
@@ -59,9 +62,7 @@ def export_to_google_sheets(data, data_type):
                 },
                 {
                     "updateCells": {
-                        "range": {
-                            "sheetId": target_sheet_id
-                        },
+                        "range": {"sheetId": target_sheet_id},
                         "fields": "userEnteredValue"
                     }
                 }
@@ -73,10 +74,11 @@ def export_to_google_sheets(data, data_type):
                 spreadsheetId=SPREADSHEET_ID,
                 body={"requests": [{"addSheet": {"properties": {"title": new_sheet_title}}}]}
             ).execute()
-        
-        # Ghi dữ liệu vào sheet
-        values = [list(data.columns)] + data.values.tolist()
-        
+
+        # Áp dụng ép kiểu an toàn
+        converted_data = data.applymap(safe_convert)
+        values = [list(converted_data.columns)] + converted_data.values.tolist()
+
         sheets_api.values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=f"{new_sheet_title}!A1",
@@ -84,7 +86,6 @@ def export_to_google_sheets(data, data_type):
             body={"values": values}
         ).execute()
 
-        
         # Format lại sheet
         format_sheet(service, SPREADSHEET_ID, new_sheet_title, data)
 
@@ -96,6 +97,21 @@ def export_to_google_sheets(data, data_type):
         raise
 
 
+# ------------- SAFE CONVERT FUNCTION -------------
+def safe_convert(val):
+    import decimal
+    if pd.isna(val):
+        return ""
+    if isinstance(val, (int, float, bool)):
+        return val
+    if isinstance(val, (datetime.date, datetime.datetime)):
+        return val.isoformat()
+    if isinstance(val, decimal.Decimal):
+        return float(val)
+    return str(val)
+
+
+# -------------- FORMATTING -------------------
 def format_sheet(service, sheet_id, sheet_name, df):
     sheets_api = service.spreadsheets()
     sheet_id_num = get_sheet_id_by_name(service, sheet_id, sheet_name)
@@ -103,7 +119,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
 
     requests = []
 
-    # Freeze hàng đầu tiên
+    # Freeze header
     requests.append({
         "updateSheetProperties": {
             "properties": {
@@ -126,16 +142,14 @@ def format_sheet(service, sheet_id, sheet_name, df):
             },
             "cell": {
                 "userEnteredFormat": {
-                    "textFormat": {
-                        "bold": True
-                    }
+                    "textFormat": {"bold": True}
                 }
             },
             "fields": "userEnteredFormat.textFormat.bold"
         }
     })
 
-    # In-stock Quantity: in đậm + màu xanh
+    # In-stock Quantity: bold + màu xanh
     if 'in_stock_quantity' in col_index:
         col_idx = col_index['in_stock_quantity']
         requests.append({
@@ -156,7 +170,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
             }
         })
 
-    # VAT Invoice Number: giữ dạng văn bản
+    # VAT Invoice Number: format text
     if 'vat_invoice_number' in col_index:
         col_idx = col_index['vat_invoice_number']
         requests.append({
@@ -169,16 +183,13 @@ def format_sheet(service, sheet_id, sheet_name, df):
                 },
                 "cell": {
                     "userEnteredFormat": {
-                        "numberFormat": {
-                            "type": "TEXT"
-                        }
+                        "numberFormat": {"type": "TEXT"}
                     }
                 },
                 "fields": "userEnteredFormat.numberFormat"
             }
         })
 
-    # Thực hiện định dạng nếu có yêu cầu
     if requests:
         try:
             sheets_api.batchUpdate(
@@ -190,6 +201,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
             logger.error(f"❌ Google Sheets formatting error: {e}")
 
 
+# --------------- UTILITY -------------------
 def get_sheet_id_by_name(service, spreadsheet_id, sheet_name):
     sheets_api = service.spreadsheets()
     metadata = sheets_api.get(spreadsheetId=spreadsheet_id).execute()
@@ -197,7 +209,3 @@ def get_sheet_id_by_name(service, spreadsheet_id, sheet_name):
         if sheet["properties"]["title"] == sheet_name:
             return sheet["properties"]["sheetId"]
     raise Exception(f"Sheet name '{sheet_name}' not found.")
-
-def clean_dataframe_for_export(df):
-    # Chuyển toàn bộ NaN, NaT, None về None để Google Sheets hiểu là ô trống
-    return df.astype(object).where(pd.notnull(df), None)
