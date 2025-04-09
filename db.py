@@ -31,6 +31,7 @@ def run_query(data_type: str) -> str:
     queries = {
         "Order Confirmations": "SELECT * FROM order_confirmation_full_view",
         "Inventory": "SELECT * FROM inventory_full_view",
+        "Inventory Details": "SELECT * FROM inventory_detailed_view",
         "Purchase Orders": "SELECT * FROM purchase_order_full_view",
         "Sales Invoices": "SELECT * FROM sales_invoice_full_view",
         "Customer Payments": "SELECT * FROM customer_payment_full_view",
