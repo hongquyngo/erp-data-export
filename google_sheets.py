@@ -15,7 +15,6 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-
 # ---------------- MAIN EXPORT ----------------
 def export_to_google_sheets(data, data_type):
     logger.info("📄 Starting export to Google Sheets...")
@@ -75,16 +74,9 @@ def export_to_google_sheets(data, data_type):
                 body={"requests": [{"addSheet": {"properties": {"title": new_sheet_title}}}]}
             ).execute()
 
-        # 👉 Convert datetime/date only (leave other data types intact)
-        def convert(val):
-            if isinstance(val, (datetime.date, datetime.datetime)):
-                return val.isoformat()
-            return val
+        # Ghi dữ liệu lên Google Sheets (giữ nguyên định dạng dataframe)
+        values = [list(data.columns)] + data.values.tolist()
 
-        converted_df = data.applymap(convert)
-        values = [list(converted_df.columns)] + converted_df.values.tolist()
-
-        # Ghi dữ liệu
         sheets_api.values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=f"{new_sheet_title}!A1",
@@ -101,7 +93,6 @@ def export_to_google_sheets(data, data_type):
     except Exception as e:
         logger.exception(f"❌ Error during export to Google Sheet: {e}")
         raise
-
 
 # ---------------- SHEET FORMATTING ----------------
 def format_sheet(service, sheet_id, sheet_name, df):
@@ -141,7 +132,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
         }
     })
 
-    # In-stock Quantity: bold + màu xanh
+    # In-stock Quantity: bold + xanh
     if 'in_stock_quantity' in col_index:
         col_idx = col_index['in_stock_quantity']
         requests.append({
@@ -162,7 +153,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
             }
         })
 
-    # VAT Invoice Number: format text
+    # VAT Invoice Number: giữ dạng văn bản
     if 'vat_invoice_number' in col_index:
         col_idx = col_index['vat_invoice_number']
         requests.append({
@@ -182,7 +173,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
             }
         })
 
-    # Apply formatting
+    # Gửi định dạng
     if requests:
         try:
             sheets_api.batchUpdate(
@@ -192,7 +183,6 @@ def format_sheet(service, sheet_id, sheet_name, df):
             logger.info("🎨 Sheet formatting applied successfully.")
         except HttpError as e:
             logger.error(f"❌ Google Sheets formatting error: {e}")
-
 
 # ---------------- UTILITY ----------------
 def get_sheet_id_by_name(service, spreadsheet_id, sheet_name):
