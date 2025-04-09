@@ -38,5 +38,6 @@ def run_query(data_type: str) -> str:
         "Deliveries": "SELECT * FROM delivery_full_view",
         "Inbound Logistic Charges": "SELECT * FROM inbound_logistic_charge_full_view",
         "Outbound Logistic Charges": "SELECT * FROM outbound_logistic_charge_full_view",
+        "CAN Details": "SELECT * FROM can_tracking_full_view"
     }
     return queries.get(data_type, "")
