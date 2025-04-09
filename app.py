@@ -13,8 +13,9 @@ def main():
     st.title("📤 Export ERP Data to Google Sheets")
 
     data_type = st.selectbox("Select data type to export:", [
+        "Inventory Summary",
+        "Inventory Details",
         "Order Confirmations",
-        "Inventory",
         "Purchase Orders",
         "Sales Invoices",
         "Customer Payments",
