@@ -1,22 +1,21 @@
 import datetime
 import logging
-import pandas as pd
 import streamlit as st
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import pytz
+import pandas as pd
 
 # ------------------ CONFIG ------------------
 SPREADSHEET_ID = "18uvsmtMSYQg1jacLjGF4Bj8GiX-Hjq0Cgi_PPM2Y0U4"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# ------------------ LOGGER ------------------
+# ----------------- LOGGER -------------------
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-
-# ------------------ EXPORT ------------------
+# ---------------- MAIN EXPORT ----------------
 def export_to_google_sheets(data, data_type):
     logger.info("📄 Starting export to Google Sheets...")
 
@@ -27,14 +26,14 @@ def export_to_google_sheets(data, data_type):
     service = build("sheets", "v4", credentials=credentials)
     sheets_api = service.spreadsheets()
 
-    # Tạo tên sheet mới theo giờ Việt Nam
+    # Tạo tên sheet mới với giờ Việt Nam
     vn_tz = pytz.timezone("Asia/Ho_Chi_Minh")
     now = datetime.datetime.now(vn_tz).strftime("%Y%m%d_%H%M")
     prefix = data_type.lower().replace(" ", "_")
     new_sheet_title = f"{prefix}_{now}"
 
     try:
-        # Kiểm tra sheet có prefix
+        # Tìm sheet có prefix
         logger.info(f"🔍 Checking for existing sheet with prefix: {prefix}")
         metadata = sheets_api.get(spreadsheetId=SPREADSHEET_ID).execute()
         sheets = metadata.get("sheets", [])
@@ -75,11 +74,8 @@ def export_to_google_sheets(data, data_type):
                 body={"requests": [{"addSheet": {"properties": {"title": new_sheet_title}}}]}
             ).execute()
 
-        # Áp dụng ép kiểu an toàn
-        values = [list(data.columns)] + [
-            [safe_convert(cell) for cell in row] for row in data.values
-        ]
-
+        # Ghi dữ liệu lên Google Sheets (giữ nguyên định dạng dataframe)
+        values = [list(data.columns)] + data.values.tolist()
 
         sheets_api.values().update(
             spreadsheetId=SPREADSHEET_ID,
@@ -98,22 +94,7 @@ def export_to_google_sheets(data, data_type):
         logger.exception(f"❌ Error during export to Google Sheet: {e}")
         raise
 
-
-# ------------- SAFE CONVERT FUNCTION -------------
-def safe_convert(val):
-    import decimal
-    if pd.isna(val):
-        return ""
-    if isinstance(val, (int, float, bool)):
-        return val
-    if isinstance(val, (datetime.date, datetime.datetime)):
-        return val.isoformat()
-    if isinstance(val, decimal.Decimal):
-        return float(val)
-    return str(val)
-
-
-# -------------- FORMATTING -------------------
+# ---------------- SHEET FORMATTING ----------------
 def format_sheet(service, sheet_id, sheet_name, df):
     sheets_api = service.spreadsheets()
     sheet_id_num = get_sheet_id_by_name(service, sheet_id, sheet_name)
@@ -151,7 +132,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
         }
     })
 
-    # In-stock Quantity: bold + màu xanh
+    # In-stock Quantity: bold + xanh
     if 'in_stock_quantity' in col_index:
         col_idx = col_index['in_stock_quantity']
         requests.append({
@@ -172,7 +153,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
             }
         })
 
-    # VAT Invoice Number: format text
+    # VAT Invoice Number: giữ dạng văn bản
     if 'vat_invoice_number' in col_index:
         col_idx = col_index['vat_invoice_number']
         requests.append({
@@ -192,6 +173,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
             }
         })
 
+    # Gửi định dạng
     if requests:
         try:
             sheets_api.batchUpdate(
@@ -202,8 +184,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
         except HttpError as e:
             logger.error(f"❌ Google Sheets formatting error: {e}")
 
-
-# --------------- UTILITY -------------------
+# ---------------- UTILITY ----------------
 def get_sheet_id_by_name(service, spreadsheet_id, sheet_name):
     sheets_api = service.spreadsheets()
     metadata = sheets_api.get(spreadsheetId=spreadsheet_id).execute()
