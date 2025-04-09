@@ -1,6 +1,5 @@
 import datetime
 import logging
-import streamlit as st
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -16,7 +15,6 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-# ---------------- MAIN EXPORT ----------------
 def export_to_google_sheets(data, data_type):
     logger.info("📄 Starting export to Google Sheets...")
 
@@ -27,14 +25,12 @@ def export_to_google_sheets(data, data_type):
     service = build("sheets", "v4", credentials=credentials)
     sheets_api = service.spreadsheets()
 
-    # Tạo tên sheet mới với giờ Việt Nam
     vn_tz = pytz.timezone("Asia/Ho_Chi_Minh")
     now = datetime.datetime.now(vn_tz).strftime("%Y%m%d_%H%M")
     prefix = data_type.lower().replace(" ", "_")
     new_sheet_title = f"{prefix}_{now}"
 
     try:
-        # Tìm sheet có prefix
         logger.info(f"🔍 Checking for existing sheet with prefix: {prefix}")
         metadata = sheets_api.get(spreadsheetId=SPREADSHEET_ID).execute()
         sheets = metadata.get("sheets", [])
@@ -69,25 +65,32 @@ def export_to_google_sheets(data, data_type):
             ]
             sheets_api.batchUpdate(spreadsheetId=SPREADSHEET_ID, body={"requests": requests}).execute()
         else:
-            logger.info(f"🆕 No existing sheet found. Creating new sheet: {new_sheet_title}")
+            logger.info(f"🏰 No existing sheet found. Creating new sheet: {new_sheet_title}")
             sheets_api.batchUpdate(
                 spreadsheetId=SPREADSHEET_ID,
                 body={"requests": [{"addSheet": {"properties": {"title": new_sheet_title}}}]}
             ).execute()
 
-        # Chuẩn bị dữ liệu đầu ra (giữ định dạng, ép TEXT cho vat_invoice_number)
-        values = prepare_values_for_sheet(data)
-
-        # Ghi dữ liệu với USER_ENTERED
+        # Step 1: Write only the header with RAW
+        headers = [list(data.columns)]
         sheets_api.values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=f"{new_sheet_title}!A1",
-            valueInputOption="USER_ENTERED",
-            body={"values": values}
+            valueInputOption="RAW",
+            body={"values": headers}
         ).execute()
 
-        # Format lại sheet
+        # Step 2: Format sheet (now header is available)
         format_sheet(service, SPREADSHEET_ID, new_sheet_title, data)
+
+        # Step 3: Write data (starting at row 2) with USER_ENTERED
+        body_values = data.astype(str).values.tolist()
+        sheets_api.values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f"{new_sheet_title}!A2",
+            valueInputOption="USER_ENTERED",
+            body={"values": body_values}
+        ).execute()
 
         logger.info("✅ Export and formatting completed successfully.")
         return new_sheet_title
@@ -97,7 +100,6 @@ def export_to_google_sheets(data, data_type):
         raise
 
 
-# ---------------- SHEET FORMATTING ----------------
 def format_sheet(service, sheet_id, sheet_name, df):
     sheets_api = service.spreadsheets()
     sheet_id_num = get_sheet_id_by_name(service, sheet_id, sheet_name)
@@ -135,7 +137,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
         }
     })
 
-    # In-stock Quantity: bold + màu xanh
+    # In-stock Quantity formatting
     if 'In-stock Quantity' in col_index:
         col_idx = col_index['in_stock_quantity']
         requests.append({
@@ -156,7 +158,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
             }
         })
 
-    # VAT Invoice Number: format text
+    # VAT Invoice Number format as TEXT
     if 'VAT Invoice Number' in col_index:
         col_idx = col_index['vat_invoice_number']
         requests.append({
@@ -176,8 +178,6 @@ def format_sheet(service, sheet_id, sheet_name, df):
             }
         })
 
-    
-    # Apply formatting
     if requests:
         try:
             sheets_api.batchUpdate(
@@ -189,7 +189,6 @@ def format_sheet(service, sheet_id, sheet_name, df):
             logger.error(f"❌ Google Sheets formatting error: {e}")
 
 
-# ---------------- UTILITY ----------------
 def get_sheet_id_by_name(service, spreadsheet_id, sheet_name):
     sheets_api = service.spreadsheets()
     metadata = sheets_api.get(spreadsheetId=spreadsheet_id).execute()
@@ -197,20 +196,3 @@ def get_sheet_id_by_name(service, spreadsheet_id, sheet_name):
         if sheet["properties"]["title"] == sheet_name:
             return sheet["properties"]["sheetId"]
     raise Exception(f"Sheet name '{sheet_name}' not found.")
-
-
-def prepare_values_for_sheet(df):
-    result = [list(df.columns)]
-
-    for _, row in df.iterrows():
-        new_row = []
-        for col, val in row.items():
-            if pd.isna(val):
-                new_row.append("")
-            elif col == "vat_invoice_number":
-                new_row.append(f"'{val}")  # Ép kiểu text bằng prefix '
-            else:
-                new_row.append(val)
-        result.append(new_row)
-
-    return result
