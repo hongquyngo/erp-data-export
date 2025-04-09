@@ -75,8 +75,7 @@ def export_to_google_sheets(data, data_type):
             ).execute()
         
         # Ghi dữ liệu vào sheet
-        cleaned_df = clean_dataframe_for_export(data)
-        values = [list(cleaned_df.columns)] + cleaned_df.astype(str).values.tolist()
+        values = [list(data.columns)] + data.values.tolist()
         
         sheets_api.values().update(
             spreadsheetId=SPREADSHEET_ID,
