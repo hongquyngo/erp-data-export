@@ -78,12 +78,13 @@ def export_to_google_sheets(data, data_type):
         cleaned_df = clean_dataframe_for_export(data)
         values = [list(cleaned_df.columns)] + cleaned_df.astype(str).values.tolist()
         
-        sheet.values().update(
+        sheets_api.values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=f"{new_sheet_title}!A1",
             valueInputOption="RAW",
             body={"values": values}
         ).execute()
+
         
         # Format lại sheet
         format_sheet(service, SPREADSHEET_ID, new_sheet_title, data)
