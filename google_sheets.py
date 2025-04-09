@@ -75,7 +75,7 @@ def export_to_google_sheets(data, data_type):
                 body={"requests": [{"addSheet": {"properties": {"title": new_sheet_title}}}]}
             ).execute()
 
-        # Chuẩn hóa dữ liệu (chuyển NaN/NaT thành None)
+        # Chuẩn hóa dữ liệu: NaN/NaT -> None
         cleaned_df = data.where(pd.notnull(data), None)
         values = [list(cleaned_df.columns)] + cleaned_df.values.tolist()
 
