@@ -80,7 +80,7 @@ def export_to_google_sheets(data, data_type):
         sheets_api.values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=f"{new_sheet_title}!A1",
-            valueInputOption="RAW",
+            valueInputOption="USER_ENTERED",
             body={"values": values}
         ).execute()
 
