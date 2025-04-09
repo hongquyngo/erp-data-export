@@ -76,8 +76,10 @@ def export_to_google_sheets(data, data_type):
             ).execute()
 
         # Áp dụng ép kiểu an toàn
-        converted_data = data.applymap(safe_convert)
-        values = [list(converted_data.columns)] + converted_data.values.tolist()
+        values = [list(data.columns)] + [
+            [safe_convert(cell) for cell in row] for row in data.values
+        ]
+
 
         sheets_api.values().update(
             spreadsheetId=SPREADSHEET_ID,
