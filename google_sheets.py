@@ -15,6 +15,7 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+
 # ---------------- MAIN EXPORT ----------------
 def export_to_google_sheets(data, data_type):
     logger.info("📄 Starting export to Google Sheets...")
@@ -74,9 +75,10 @@ def export_to_google_sheets(data, data_type):
                 body={"requests": [{"addSheet": {"properties": {"title": new_sheet_title}}}]}
             ).execute()
 
-        # Ghi dữ liệu lên Google Sheets (giữ nguyên định dạng dataframe)
-        values = [list(data.columns)] + data.values.tolist()
+        # Chuẩn bị dữ liệu đầu ra (giữ định dạng, ép TEXT cho vat_invoice_number)
+        values = prepare_values_for_sheet(data)
 
+        # Ghi dữ liệu với USER_ENTERED
         sheets_api.values().update(
             spreadsheetId=SPREADSHEET_ID,
             range=f"{new_sheet_title}!A1",
@@ -93,6 +95,7 @@ def export_to_google_sheets(data, data_type):
     except Exception as e:
         logger.exception(f"❌ Error during export to Google Sheet: {e}")
         raise
+
 
 # ---------------- SHEET FORMATTING ----------------
 def format_sheet(service, sheet_id, sheet_name, df):
@@ -132,7 +135,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
         }
     })
 
-    # In-stock Quantity: bold + xanh
+    # In-stock Quantity: bold + màu xanh
     if 'in_stock_quantity' in col_index:
         col_idx = col_index['in_stock_quantity']
         requests.append({
@@ -153,27 +156,8 @@ def format_sheet(service, sheet_id, sheet_name, df):
             }
         })
 
-    # VAT Invoice Number: giữ dạng văn bản
-    if 'vat_invoice_number' in col_index:
-        col_idx = col_index['vat_invoice_number']
-        requests.append({
-            "repeatCell": {
-                "range": {
-                    "sheetId": sheet_id_num,
-                    "startRowIndex": 1,
-                    "startColumnIndex": col_idx,
-                    "endColumnIndex": col_idx + 1
-                },
-                "cell": {
-                    "userEnteredFormat": {
-                        "numberFormat": {"type": "TEXT"}
-                    }
-                },
-                "fields": "userEnteredFormat.numberFormat"
-            }
-        })
 
-    # Gửi định dạng
+    # Apply formatting
     if requests:
         try:
             sheets_api.batchUpdate(
@@ -184,6 +168,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
         except HttpError as e:
             logger.error(f"❌ Google Sheets formatting error: {e}")
 
+
 # ---------------- UTILITY ----------------
 def get_sheet_id_by_name(service, spreadsheet_id, sheet_name):
     sheets_api = service.spreadsheets()
@@ -192,3 +177,20 @@ def get_sheet_id_by_name(service, spreadsheet_id, sheet_name):
         if sheet["properties"]["title"] == sheet_name:
             return sheet["properties"]["sheetId"]
     raise Exception(f"Sheet name '{sheet_name}' not found.")
+
+
+def prepare_values_for_sheet(df):
+    result = [list(df.columns)]
+
+    for _, row in df.iterrows():
+        new_row = []
+        for col, val in row.items():
+            if pd.isna(val):
+                new_row.append("")
+            elif col == "vat_invoice_number":
+                new_row.append(f"'{val}")  # Ép kiểu text bằng prefix '
+            else:
+                new_row.append(val)
+        result.append(new_row)
+
+    return result
