@@ -156,7 +156,27 @@ def format_sheet(service, sheet_id, sheet_name, df):
             }
         })
 
+    # VAT Invoice Number: format text
+    if 'vat_invoice_number' in col_index:
+        col_idx = col_index['vat_invoice_number']
+        requests.append({
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id_num,
+                    "startRowIndex": 1,
+                    "startColumnIndex": col_idx,
+                    "endColumnIndex": col_idx + 1
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "numberFormat": {"type": "TEXT"}
+                    }
+                },
+                "fields": "userEnteredFormat.numberFormat"
+            }
+        })
 
+    
     # Apply formatting
     if requests:
         try:
