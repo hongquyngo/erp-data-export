@@ -137,26 +137,34 @@ def format_sheet(service, sheet_id, sheet_name, df):
         }
     })
 
-    # In-stock Quantity formatting
-    if 'In-stock Quantity' in col_index:
-        col_idx = col_index['In-stock Quantity']
-        requests.append({
-            "repeatCell": {
-                "range": {
-                    "sheetId": sheet_id_num,
-                    "startRowIndex": 1,
-                    "startColumnIndex": col_idx,
-                    "endColumnIndex": col_idx + 1
-                },
-                "cell": {
-                    "userEnteredFormat": {
-                        "textFormat": {"bold": True},
-                        "backgroundColor": {"red": 0.8, "green": 0.95, "blue": 1.0}
-                    }
-                },
-                "fields": "userEnteredFormat(textFormat, backgroundColor)"
-            }
-        })
+    # Format các cột số lượng tồn kho liên quan nếu tồn tại
+    highlight_columns = ['In-stock Quantity', 'Remaining Quantity']
+    
+    for col_name in highlight_columns:
+        if col_name in col_index:
+            col_idx = col_index[col_name]
+            requests.append({
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id_num,
+                        "startRowIndex": 1,
+                        "startColumnIndex": col_idx,
+                        "endColumnIndex": col_idx + 1
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {"bold": True},
+                            "backgroundColor": {
+                                "red": 0.8,
+                                "green": 0.95,
+                                "blue": 1.0
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat(textFormat, backgroundColor)"
+                }
+            })
+
 
     # VAT Invoice Number format as TEXT
     if 'VAT Invoice Number' in col_index:
