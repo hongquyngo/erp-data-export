@@ -75,9 +75,14 @@ def export_to_google_sheets(data, data_type):
                 body={"requests": [{"addSheet": {"properties": {"title": new_sheet_title}}}]}
             ).execute()
 
-        # Chuẩn hóa dữ liệu: NaN/NaT -> None
-        cleaned_df = data.where(pd.notnull(data), None)
-        values = [list(cleaned_df.columns)] + cleaned_df.values.tolist()
+        # 👉 Convert datetime/date only (leave other data types intact)
+        def convert(val):
+            if isinstance(val, (datetime.date, datetime.datetime)):
+                return val.isoformat()
+            return val
+
+        converted_df = data.applymap(convert)
+        values = [list(converted_df.columns)] + converted_df.values.tolist()
 
         # Ghi dữ liệu
         sheets_api.values().update(
