@@ -76,16 +76,8 @@ def export_to_google_sheets(data, data_type):
             ).execute()
         
         # Chuẩn hóa dữ liệu trước khi ghi
-        def convert_cell(val):
-            if isinstance(val, (datetime.date, datetime.datetime)):
-                return val.strftime("%Y-%m-%d %H:%M:%S") if isinstance(val, datetime.datetime) else val.strftime("%Y-%m-%d")
-            elif pd.isna(val):
-                return None
-            else:
-                return val
-        
-        cleaned_df = data.copy()
-        cleaned_df = cleaned_df.applymap(convert_cell)
+        # Xử lý NaN, NaT về None để Google Sheets hiểu là ô trống
+        cleaned_df = data.where(pd.notnull(data), None)
         values = [list(cleaned_df.columns)] + cleaned_df.values.tolist()
 
         # Ghi dữ liệu
