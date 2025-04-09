@@ -139,7 +139,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
 
     # In-stock Quantity formatting
     if 'In-stock Quantity' in col_index:
-        col_idx = col_index['in_stock_quantity']
+        col_idx = col_index['In-stock Quantity']
         requests.append({
             "repeatCell": {
                 "range": {
@@ -160,7 +160,7 @@ def format_sheet(service, sheet_id, sheet_name, df):
 
     # VAT Invoice Number format as TEXT
     if 'VAT Invoice Number' in col_index:
-        col_idx = col_index['vat_invoice_number']
+        col_idx = col_index['VAT Invoice Number']
         requests.append({
             "repeatCell": {
                 "range": {
