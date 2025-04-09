@@ -35,7 +35,6 @@ def run_query(data_type: str) -> str:
         "Sales Invoices": "SELECT * FROM sales_invoice_full_view",
         "Customer Payments": "SELECT * FROM customer_payment_full_view",
         "Deliveries": "SELECT * FROM delivery_full_view",
-        "Product Code Mapping": "SELECT * FROM product_code_mapping_full_view",
         "Inbound Logistic Charges": "SELECT * FROM inbound_logistic_charge_full_view",
         "Outbound Logistic Charges": "SELECT * FROM outbound_logistic_charge_full_view",
     }
