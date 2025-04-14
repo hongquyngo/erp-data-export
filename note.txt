@@ -1,0 +1,80 @@
+# ========================
+# 🔁 VENV – Virtual Environment Commands
+# ========================
+
+# ✅ 1. Tạo môi trường ảo mới tên là "venv"
+python -m venv venv
+# Dòng này tạo một thư mục "venv/" chứa môi trường Python độc lập cho project
+
+# ✅ 2. Kích hoạt môi trường ảo (trên Windows – CMD hoặc PowerShell)
+venv\Scripts\activate
+# Sau khi kích hoạt thành công, terminal sẽ hiển thị tiền tố (venv)
+
+# ✅ (Tuỳ chọn) Nếu PowerShell bị chặn script, hãy tạm mở quyền:
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+# Cho phép chạy các script .ps1 trong phiên PowerShell hiện tại (an toàn)
+
+# ✅ 3. Cài đặt các thư viện trong requirements.txt
+pip install -r requirements.txt
+# Cài tất cả dependencies đã liệt kê
+
+# ✅ 4. Freeze danh sách các thư viện hiện tại vào file requirements.txt
+pip freeze > requirements.txt
+# Rất hữu ích khi muốn chia sẻ project cho người khác hoặc deploy
+
+# ✅ 5. Thoát khỏi môi trường ảo
+deactivate
+# Quay lại dùng Python hệ thống
+
+# ✅ 6. Xoá môi trường ảo (nếu không cần nữa)
+# ⚠️ Lưu ý: hành động này không thể khôi phục, hãy chắc chắn bạn không cần "venv"
+rm -r venv              # Dùng trên Git Bash/macOS/Linux
+rmdir /s /q venv        # Dùng trên Windows CMD
+
+# ========================
+
+# ========================
+# 💻 GIT CLI – Cơ bản khi làm việc với Git trên VS Code
+# ========================
+
+# ✅ 1. Kiểm tra trạng thái hiện tại của repo (file nào thay đổi, chưa commit)
+git status
+
+# ✅ 2. Thêm tất cả file đã thay đổi vào "staging area" để chuẩn bị commit
+git add .
+# Nếu chỉ muốn add một file cụ thể: git add ten_file.py
+
+# ✅ 3. Ghi lại thay đổi (commit) với mô tả ngắn
+git commit -m "Mô tả thay đổi"
+# Ví dụ: git commit -m "Add export function to Google Sheets"
+
+# ✅ 4. Đẩy (push) thay đổi từ local lên GitHub (nhánh main)
+git push origin main
+# Lần đầu tiên dùng: git push -u origin main
+
+# ✅ 5. Kéo (pull) các thay đổi mới nhất từ GitHub về máy local
+git pull origin main
+
+# ✅ 6. Kiểm tra lịch sử các lần commit
+git log
+# Nhấn "q" để thoát khỏi màn hình log
+
+# ✅ 7. Khởi tạo Git repo trong thư mục local (nếu là project mới)
+git init
+
+# ✅ 8. Kết nối repo local với GitHub repo (chỉ cần làm 1 lần)
+git remote add origin https://github.com/<tên_user>/<tên_repo>.git
+
+# ✅ 9. Đổi tên nhánh mặc định thành "main" (nếu cần)
+git branch -M main
+
+# ✅ 10. Clone repo từ GitHub về máy
+git clone https://github.com/<tên_user>/<tên_repo>.git
+
+# ✅ 11. Xem danh sách remote đang kết nối
+git remote -v
+
+# ✅ 12. Xóa một remote (nếu gắn nhầm GitHub repo)
+git remote remove origin
+
+# ========================
