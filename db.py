@@ -19,7 +19,8 @@ QUERY_MAP = {
     "Deliveries": "SELECT * FROM delivery_full_view",
     "Inbound Logistic Charges": "SELECT * FROM inbound_logistic_charge_full_view",
     "Outbound Logistic Charges": "SELECT * FROM outbound_logistic_charge_full_view",
-    "CAN Details": "SELECT * FROM can_tracking_full_view"
+    "CAN Details": "SELECT * FROM can_tracking_full_view",
+    "CAN Pending": "SELECT * FROM prostechvn.can_pending_stockin_view;"
 }
 
 def get_db_engine():

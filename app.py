@@ -21,6 +21,7 @@ def main():
         "Customer Payments",
         "Purchase Orders",
         "CAN Details",
+        "CAN Pending",
         "Inbound Logistic Charges"
     ])
 
